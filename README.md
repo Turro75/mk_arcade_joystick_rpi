@@ -117,7 +117,7 @@ sudo dpkg -i mk-arcade-joystick-rpi-0.1.4.deb
 
 3.b.1 - Download the files:
 ```shell
-git clone https://github.com/pinuct/mk_arcade_joystick_rpi/tree/customgpiohotkey
+git clone https://github.com/pinuct/mk_arcade_joystick_rpi
 ```
 3.b.2 - Create a folder under  "/usr/src/*module*-*module-version*/"
 ```shell
