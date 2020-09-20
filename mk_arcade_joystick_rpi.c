@@ -206,6 +206,28 @@ static const char *mk_names[] = {
     NULL, "GPIO Controller 1", "GPIO Controller 2", "MCP23017 Controller", "GPIO Controller 1" , "GPIO Controller 1"
 };
 
+
+#ifdef RPI4
+//pullups changed on RPI4
+#define GPPUPPDN0                57        // Pin pull-up/down for pins 15:0  
+#define GPPUPPDN1                58        // Pin pull-up/down for pins 31:16 
+#define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
+#define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
+
+static void setGpioPullUps(int pullUps) {
+      int pullreg = GPPUPPDN0 + (pin>>4);
+      int pullshift = (pin & 0xf) << 1;
+      unsigned int pullbits;
+      unsigned int pull = 1; //PULLUP
+
+      pullbits = *(gpio + pullreg);
+      pullbits &= ~(3 << pullshift);
+      pullbits |= (pull << pullshift);
+      *(gpio + pullreg) = pullbits;   
+}
+
+#else
+//previous RPI
 /* GPIO UTILS */
 static void setGpioPullUps(int pullUps) {
     *(gpio + 37) = 0x02;
@@ -216,6 +238,7 @@ static void setGpioPullUps(int pullUps) {
     *(gpio + 38) = 0x00;
 }
 
+#endif
 /*
 
 // GPPUD:
