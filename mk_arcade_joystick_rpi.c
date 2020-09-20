@@ -172,34 +172,37 @@ static const char *mk_names[] = {
 #define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
 #define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
 
-static void setGpioPullUps(int gpioMap[]) {
-        
-    int i;
-    for(i=0; i<12;i++) {
-        if(gpioMap[i] != -1){   // to avoid unused pins
-            int pin = gpioMap[i];
-            int pullreg = GPPUPPDN0 + (pin>>4);
-            int pullshift = (pin & 0xf) << 1;
-            unsigned int pullbits;
-            unsigned int pull = 1; //PULLUP
-            pullbits = *(gpio + pullreg);
-            pullbits &= ~(3 << pullshift);
-            pullbits |= (pull << pullshift);
-            *(gpio + pullreg) = pullbits;  
-        }
-    }
+static void setGpioPullUp(int gpioPin) {
+      
+    int pullreg = GPPUPPDN0 + (gpioPin>>4);
+    int pullshift = (gpioPin & 0xf) << 1;
+    unsigned int pullbits;
+    unsigned int pull = 1; //PULLUP
+    pullbits = *(gpio + pullreg);
+    pullbits &= ~(3 << pullshift);
+    pullbits |= (pull << pullshift);
+    *(gpio + pullreg) = pullbits;  
 }
 
 #else
 //previous RPI
 /* GPIO UTILS */
-static void setGpioPullUps(int pullUps) {
-    *(gpio + 37) = 0x02;
-    udelay(10);
-    *(gpio + 38) = pullUps;
-    udelay(10);
-    *(gpio + 37) = 0x00;
-    *(gpio + 38) = 0x00;
+#define GPPUDCLK0 38
+#define GPPUD 37
+
+static void setGpioPullUp(int gpioPin) {
+    
+    int clkreg = GPPUDCLK0 + (gpioPin>>5);
+    int clkbit = 1 << (gpioPin & 0x1f);
+
+    *(gpio + GPPUD) = 0x02;
+    delay_us(10);
+    *(gpio + clkreg) = clkbit;
+    delay_us(10);
+    *(gpio + GPPUD) = 0;
+    delay_us(10);
+    *(gpio + clkreg) = 0;
+    delay_us(10);
 }
 
 #endif
@@ -209,17 +212,6 @@ static void setGpioAsInput(int gpioNum) {
     INP_GPIO(gpioNum);
 }
 
-static int getPullUpMask(int gpioMap[]){
-    int mask = 0x0000000;
-    int i;
-    for(i=0; i<MK_MAX_BUTTONS;i++) {
-        if(gpioMap[i] != -1){   // to avoid unused pins
-            int pin_mask  = 1<<gpioMap[i];
-            mask = mask | pin_mask;
-        }
-    }
-    return mask;
-}
 
 
 static void mk_gpio_read_packet(struct mk_pad * pad, unsigned char *data) {
@@ -391,14 +383,9 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     for (i = 0; i < MK_MAX_BUTTONS; i++) {
         if(pad->gpio_maps[i] != -1){    // to avoid unused buttons
             setGpioAsInput(pad->gpio_maps[i]);
+            setGpioPullUp(pad->gpio_maps[i]);
         }
     }                
-    
-  #ifdef RPI4
-        setGpioPullUps(pad->gpio_maps);
-  #else
-        setGpioPullUps(getPullUpMask(pad->gpio_maps));
-  #endif
         printk("GPIO configured for pad%d\n", idx);
 
     err = input_register_device(pad->dev);
