@@ -148,7 +148,11 @@ enum mk_type {
     MK_MAX
 };
 
+#ifdef RPI4 //try reducing polling time to improve latency
+#define MK_REFRESH_TIME	HZ/300
+#else
 #define MK_REFRESH_TIME	HZ/100
+#endif
 
 struct mk_pad {
     struct input_dev *dev;
@@ -214,16 +218,20 @@ static const char *mk_names[] = {
 #define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
 #define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
 
-static void setGpioPullUps(int pullUps) {
-      int pullreg = GPPUPPDN0 + (pin>>4);
-      int pullshift = (pin & 0xf) << 1;
-      unsigned int pullbits;
-      unsigned int pull = 1; //PULLUP
-
-      pullbits = *(gpio + pullreg);
-      pullbits &= ~(3 << pullshift);
-      pullbits |= (pull << pullshift);
-      *(gpio + pullreg) = pullbits;   
+static void setGpioPullUps(int gpioMap[]) {
+        
+    int i;
+    for(i=0; i<12;i++) {
+        if(gpioMap[i] != -1){   // to avoid unused pins
+            int pin = gpioMap[i];
+            int pullreg = GPPUPPDN0 + (pin>>4);
+            int pullshift = (pin & 0xf) << 1;
+            unsigned int pullbits;
+            unsigned int pull = 1; //PULLUP
+            pullbits = *(gpio + pullreg);
+            pullbits &= ~(3 << pullshift);
+            pullbits |= (pull << pullshift);
+            *(gpio + pullreg) = pullbits;   
 }
 
 #else
@@ -558,7 +566,11 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
                  setGpioAsInput(pad->gpio_maps[i]);
             }                
         }
+  #ifdef RPI4
+        setGpioPullUps(pad->gpio_maps);
+  #else
         setGpioPullUps(getPullUpMask(pad->gpio_maps));
+  #endif
         printk("GPIO configured for pad%d\n", idx);
     }else{
         i2c_init();
