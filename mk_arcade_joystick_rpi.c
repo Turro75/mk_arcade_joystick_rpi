@@ -231,7 +231,9 @@ static void setGpioPullUps(int gpioMap[]) {
             pullbits = *(gpio + pullreg);
             pullbits &= ~(3 << pullshift);
             pullbits |= (pull << pullshift);
-            *(gpio + pullreg) = pullbits;   
+            *(gpio + pullreg) = pullbits;  
+        }
+    }
 }
 
 #else
