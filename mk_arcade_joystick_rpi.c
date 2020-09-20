@@ -196,13 +196,13 @@ static void setGpioPullUp(int gpioPin) {
     int clkbit = 1 << (gpioPin & 0x1f);
 
     *(gpio + GPPUD) = 0x02;
-    delay_us(10);
+    udelay(10);
     *(gpio + clkreg) = clkbit;
-    delay_us(10);
+    udelay(10);
     *(gpio + GPPUD) = 0;
-    delay_us(10);
+    udelay(10);
     *(gpio + clkreg) = 0;
-    delay_us(10);
+    udelay(10);
 }
 
 #endif
