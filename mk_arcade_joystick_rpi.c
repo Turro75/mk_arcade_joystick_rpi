@@ -46,7 +46,8 @@ MODULE_LICENSE("GPL");
 #define HAVE_TIMER_SETUP
 #endif
 
-#define MK_MAX_DEVICES		9
+#define MK_MAX_DEVICES		2
+#define MK_MAX_BUTTONS      13
 
 
 #ifdef RPI2
@@ -68,55 +69,8 @@ MODULE_LICENSE("GPL");
 #define GPIO_SET *(gpio+7)
 #define GPIO_CLR *(gpio+10)
 
-#define BSC1_BASE		(PERI_BASE + 0x804000)
-
-
-/*
- * MCP23017 Defines
- */
-#define MPC23017_GPIOA_MODE		0x00
-#define MPC23017_GPIOB_MODE		0x01
-#define MPC23017_GPIOA_PULLUPS_MODE	0x0c
-#define MPC23017_GPIOB_PULLUPS_MODE	0x0d
-#define MPC23017_GPIOA_READ             0x12
-#define MPC23017_GPIOB_READ             0x13
-
-/*
- * Defines for I2C peripheral (aka BSC, or Broadcom Serial Controller)
- */
-
-#define BSC1_C		*(bsc1 + 0x00)
-#define BSC1_S		*(bsc1 + 0x01)
-#define BSC1_DLEN	*(bsc1 + 0x02)
-#define BSC1_A		*(bsc1 + 0x03)
-#define BSC1_FIFO	*(bsc1 + 0x04)
-
-#define BSC_C_I2CEN	(1 << 15)
-#define BSC_C_INTR	(1 << 10)
-#define BSC_C_INTT	(1 << 9)
-#define BSC_C_INTD	(1 << 8)
-#define BSC_C_ST	(1 << 7)
-#define BSC_C_CLEAR	(1 << 4)
-#define BSC_C_READ	1
-
-#define START_READ	BSC_C_I2CEN|BSC_C_ST|BSC_C_CLEAR|BSC_C_READ
-#define START_WRITE	BSC_C_I2CEN|BSC_C_ST
-
-#define BSC_S_CLKT	(1 << 9)
-#define BSC_S_ERR	(1 << 8)
-#define BSC_S_RXF	(1 << 7)
-#define BSC_S_TXE	(1 << 6)
-#define BSC_S_RXD	(1 << 5)
-#define BSC_S_TXD	(1 << 4)
-#define BSC_S_RXR	(1 << 3)
-#define BSC_S_TXW	(1 << 2)
-#define BSC_S_DONE	(1 << 1)
-#define BSC_S_TA	1
-
-#define CLEAR_STATUS	BSC_S_CLKT|BSC_S_ERR|BSC_S_DONE
-
 static volatile unsigned *gpio;
-static volatile unsigned *bsc1;
+
 
 struct mk_config {
     int args[MK_MAX_DEVICES];
@@ -129,22 +83,30 @@ module_param_array_named(map, mk_cfg.args, int, &(mk_cfg.nargs), 0);
 MODULE_PARM_DESC(map, "Enable or disable GPIO, MCP23017, TFT and Custom Arcade Joystick");
 
 struct gpio_config {
-    int mk_arcade_gpio_maps_custom[12];
+    int mk_arcade_gpio_maps_custom[MK_MAX_BUTTONS];
     unsigned int nargs;
 };
 
+// for player 1 
 static struct gpio_config gpio_cfg __initdata;
 
 module_param_array_named(gpio, gpio_cfg.mk_arcade_gpio_maps_custom, int, &(gpio_cfg.nargs), 0);
-MODULE_PARM_DESC(gpio, "Numbers of custom GPIO for Arcade Joystick");
+MODULE_PARM_DESC(gpio, "Numbers of custom GPIO for Arcade Joystick 1");
+
+// for player 2
+static struct gpio_config gpio_cfg2 __initdata;
+
+module_param_array_named(gpio2, gpio_cfg2.mk_arcade_gpio_maps_custom, int, &(gpio_cfg2.nargs), 0);
+MODULE_PARM_DESC(gpio2, "Numbers of custom GPIO for Arcade Joystick 2");
+
 
 enum mk_type {
     MK_NONE = 0,
     MK_ARCADE_GPIO,
     MK_ARCADE_GPIO_BPLUS,
-    MK_ARCADE_MCP23017,
     MK_ARCADE_GPIO_TFT,
     MK_ARCADE_GPIO_CUSTOM,
+    MK_ARCADE_GPIO_CUSTOM2,
     MK_MAX
 };
 
@@ -158,8 +120,7 @@ struct mk_pad {
     struct input_dev *dev;
     enum mk_type type;
     char phys[32];
-    int mcp23017addr;
-    int gpio_maps[12];
+    int gpio_maps[MK_MAX_BUTTONS];
 };
 
 struct mk_nin_gpio {
@@ -176,9 +137,9 @@ struct mk_nin_gpio {
 struct mk {
     struct mk_pad pads[MK_MAX_DEVICES];
     struct timer_list timer;
-    int pad_count[MK_MAX];
     int used;
     struct mutex mutex;
+    int total_pads;
 };
 
 struct mk_subdev {
@@ -187,27 +148,21 @@ struct mk_subdev {
 
 static struct mk *mk_base;
 
-static const int mk_max_arcade_buttons = 12;
+// Map of the gpios :                     up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
+static const int mk_arcade_gpio_maps[] = {4,  17,    27,  22,    10,    9,      25, 24, 23, 18, 15, 14, 2 };
 
-// Map of the gpios :                     up, down, left, right, start, select, a,  b,  tr, y,  x,  tl
-static const int mk_arcade_gpio_maps[] = {4,  17,    27,  22,    10,    9,      25, 24, 23, 18, 15, 14 };
-// 2nd joystick on the b+ GPIOS                 up, down, left, right, start, select, a,  b,  tr, y,  x,  tl
-static const int mk_arcade_gpio_maps_bplus[] = {11, 5,    6,    13,    19,    26,     21, 20, 16, 12, 7,  8 };
-// Map of the mcp23017 on GPIOA            up, down, left, right, start, select
-static const int mk_arcade_gpioa_maps[] = {0,  1,    2,    3,     4,     5      };
+// 2nd joystick on the b+ GPIOS                 up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
+static const int mk_arcade_gpio_maps_bplus[] = {11, 5,    6,    13,    19,    26,     21, 20, 16, 12, 7,  8,  3 };
 
-// Map of the mcp23017 on GPIOB            a, b, tr, y, x, tl
-static const int mk_arcade_gpiob_maps[] = {0, 1, 2,  3, 4, 5 };
-
-// Map joystick on the b+ GPIOS with TFT      up, down, left, right, start, select, a,  b,  tr, y,  x,  tl
-static const int mk_arcade_gpio_maps_tft[] = {21, 13,    26,    19,    5,    6,     22, 4, 20, 17, 27,  16 };
+// Map joystick on the b+ GPIOS with TFT      up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
+static const int mk_arcade_gpio_maps_tft[] = {21, 13,    26,    19,    5,    6,     22, 4, 20, 17, 27,  16, 12};
 
 static const short mk_arcade_gpio_btn[] = {
-    BTN_START, BTN_SELECT, BTN_A, BTN_B, BTN_TR, BTN_Y, BTN_X, BTN_TL
+    BTN_START, BTN_SELECT, BTN_A, BTN_B, BTN_TR, BTN_Y, BTN_X, BTN_TL, BTN_MODE
 };
 
 static const char *mk_names[] = {
-    NULL, "GPIO Controller 1", "GPIO Controller 2", "MCP23017 Controller", "GPIO Controller 1" , "GPIO Controller 1"
+    NULL, "GPIO Controller 1", "GPIO Controller 2", "MCP23017 Controller", "GPIO Controller 1" , "GPIO Controller 1", "GPIO Controller 2"
 };
 
 
@@ -249,53 +204,6 @@ static void setGpioPullUps(int pullUps) {
 }
 
 #endif
-/*
-
-// GPPUD:
-//	GPIO Pin pull up/down register
-
-#define	GPPUD	37
-
-/* 2711 has a different mechanism for pin pull-up/down/enable  */
-/*
-#define GPPUPPDN0                57        // Pin pull-up/down for pins 15:0  
-#define GPPUPPDN1                58        // Pin pull-up/down for pins 31:16 
-#define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
-#define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
-
-f (piGpioPupOffset == GPPUPPDN0)
-    {
-      // Pi 4B pull up/down method
-      int pullreg = GPPUPPDN0 + (pin>>4);
-      int pullshift = (pin & 0xf) << 1;
-      unsigned int pullbits;
-      unsigned int pull;
-
-      switch (pud)
-      {
-        case PUD_OFF: pull = 0; break;
-        case PUD_UP: pull = 1; break;
-        case PUD_DOWN: pull = 2; break;
-        default: return ; // An illegal value 
-      }
-
-      pullbits = *(gpio + pullreg);
-      pullbits &= ~(3 << pullshift);
-      pullbits |= (pull << pullshift);
-      *(gpio + pullreg) = pullbits;
-    }
-    else
-    {
-      // legacy pull up/down method
-      *(gpio + GPPUD)              = pud & 3 ;		delayMicroseconds (5) ;
-      *(gpio + gpioToPUDCLK [pin]) = 1 << (pin & 31) ;	delayMicroseconds (5) ;
-
-      *(gpio + GPPUD)              = 0 ;			delayMicroseconds (5) ;
-      *(gpio + gpioToPUDCLK [pin]) = 0 ;			delayMicroseconds (5) ;
-    }
-
-
-*/
 
 
 static void setGpioAsInput(int gpioNum) {
@@ -305,7 +213,7 @@ static void setGpioAsInput(int gpioNum) {
 static int getPullUpMask(int gpioMap[]){
     int mask = 0x0000000;
     int i;
-    for(i=0; i<12;i++) {
+    for(i=0; i<MK_MAX_BUTTONS;i++) {
         if(gpioMap[i] != -1){   // to avoid unused pins
             int pin_mask  = 1<<gpioMap[i];
             mask = mask | pin_mask;
@@ -314,93 +222,11 @@ static int getPullUpMask(int gpioMap[]){
     return mask;
 }
 
-/* I2C UTILS */
-static void i2c_init(void) {
-    INP_GPIO(2);
-    SET_GPIO_ALT(2, 0);
-    INP_GPIO(3);
-    SET_GPIO_ALT(3, 0);
-}
-
-static void wait_i2c_done(void) {
-    while ((!((BSC1_S) & BSC_S_DONE))) {
-        udelay(100);
-    }
-}
-
-// Function to write data to an I2C device via the FIFO.  This doesn't refill the FIFO, so writes are limited to 16 bytes
-// including the register address. len specifies the number of bytes in the buffer.
-
-static void i2c_write(char dev_addr, char reg_addr, char *buf, unsigned short len) {
-
-    int idx;
-
-    BSC1_A = dev_addr;
-    BSC1_DLEN = len + 1; // one byte for the register address, plus the buffer length
-
-    BSC1_FIFO = reg_addr; // start register address
-    for (idx = 0; idx < len; idx++)
-        BSC1_FIFO = buf[idx];
-
-    BSC1_S = CLEAR_STATUS; // Reset status bits (see #define)
-    BSC1_C = START_WRITE; // Start Write (see #define)
-
-    wait_i2c_done();
-
-}
-
-// Function to read a number of bytes into a  buffer from the FIFO of the I2C controller
-
-static void i2c_read(char dev_addr, char reg_addr, char *buf, unsigned short len) {
-
-    i2c_write(dev_addr, reg_addr, NULL, 0);
-
-    unsigned short bufidx;
-    bufidx = 0;
-
-    memset(buf, 0, len); // clear the buffer
-
-    BSC1_DLEN = len;
-    BSC1_S = CLEAR_STATUS; // Reset status bits (see #define)
-    BSC1_C = START_READ; // Start Read after clearing FIFO (see #define)
-
-    do {
-        // Wait for some data to appear in the FIFO
-        while ((BSC1_S & BSC_S_TA) && !(BSC1_S & BSC_S_RXD));
-
-        // Consume the FIFO
-        while ((BSC1_S & BSC_S_RXD) && (bufidx < len)) {
-            buf[bufidx++] = BSC1_FIFO;
-        }
-    } while ((!(BSC1_S & BSC_S_DONE)));
-}
-
-/*  ------------------------------------------------------------------------------- */
-
-static void mk_mcp23017_read_packet(struct mk_pad * pad, unsigned char *data) {
-    int i;
-    char resultA, resultB;
-    i2c_read(pad->mcp23017addr, MPC23017_GPIOA_READ, &resultA, 1);
-    i2c_read(pad->mcp23017addr, MPC23017_GPIOB_READ, &resultB, 1);
-
-    // read direction
-    for (i = 0; i < 4; i++) {
-        data[i] = !((resultA >> mk_arcade_gpioa_maps[i]) & 0x1);
-    }
-    // read buttons on gpioa
-    for (i = 4; i < 6; i++) {
-        data[i] = !((resultA >> mk_arcade_gpioa_maps[i]) & 0x1);
-    }
-    // read buttons on gpiob
-    for (i = 6; i < 12; i++) {
-        data[i] = !((resultB >> (mk_arcade_gpiob_maps[i-6])) & 0x1);
-    }
-}
 
 static void mk_gpio_read_packet(struct mk_pad * pad, unsigned char *data) {
     int i;
 
-    for (i = 0; i < mk_max_arcade_buttons; i++) {
+    for (i = 0; i < MK_MAX_BUTTONS; i++) {
         if(pad->gpio_maps[i] != -1){    // to avoid unused buttons
             int read = GPIO_READ(pad->gpio_maps[i]);
             if (read == 0) data[i] = 1;
@@ -415,7 +241,7 @@ static void mk_input_report(struct mk_pad * pad, unsigned char * data) {
     int j;
     input_report_abs(dev, ABS_Y, !data[0]-!data[1]);
     input_report_abs(dev, ABS_X, !data[2]-!data[3]);
-    for (j = 4; j < mk_max_arcade_buttons; j++) {
+    for (j = 4; j < MK_MAX_BUTTONS; j++) {
         input_report_key(dev, mk_arcade_gpio_btn[j - 4], data[j]);
     }
     input_sync(dev);
@@ -423,20 +249,14 @@ static void mk_input_report(struct mk_pad * pad, unsigned char * data) {
 
 static void mk_process_packet(struct mk *mk) {
 
-    unsigned char data[mk_max_arcade_buttons];
+    unsigned char data[MK_MAX_BUTTONS];
     struct mk_pad *pad;
     int i;
 
-    for (i = 0; i < MK_MAX_DEVICES; i++) {
+    for (i = 0; i < mk->total_pads; i++) {
         pad = &mk->pads[i];
-        if (pad->type == MK_ARCADE_GPIO || pad->type == MK_ARCADE_GPIO_BPLUS || pad->type == MK_ARCADE_GPIO_TFT || pad->type == MK_ARCADE_GPIO_CUSTOM) {
-            mk_gpio_read_packet(pad, data);
-            mk_input_report(pad, data);
-        }
-        if (pad->type == MK_ARCADE_MCP23017) {
-            mk_mcp23017_read_packet(pad, data);
-            mk_input_report(pad, data);
-        }
+        mk_gpio_read_packet(pad, data);
+        mk_input_report(pad, data);
     }
 
 }
@@ -485,7 +305,6 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     struct input_dev *input_dev;
     int i, pad_type;
     int err;
-    char FF = 0xFF;
     pr_err("pad type : %d\n",pad_type_arg);
 
     pad_type = pad_type_arg;
@@ -501,7 +320,20 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
         if (gpio_cfg.nargs < 1) {
             pr_err("Custom device needs gpio argument\n");
             return -EINVAL;
-        } else if(gpio_cfg.nargs != 12){
+        } else if(gpio_cfg.nargs != MK_MAX_BUTTONS){
+             pr_err("Invalid gpio argument\n", pad_type);
+             return -EINVAL;
+        }
+    
+    }
+
+    if (pad_type == MK_ARCADE_GPIO_CUSTOM2) {
+
+        // if the device is custom, be sure to get correct pins
+        if (gpio_cfg2.nargs < 1) {
+            pr_err("Custom device needs gpio argument\n");
+            return -EINVAL;
+        } else if(gpio_cfg2.nargs != MK_MAX_BUTTONS){
              pr_err("Invalid gpio argument\n", pad_type);
              return -EINVAL;
         }
@@ -516,7 +348,6 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     }
 
     pad->type = pad_type;
-    pad->mcp23017addr = pad_type_arg;
     snprintf(pad->phys, sizeof (pad->phys),
             "input%d", idx);
 
@@ -536,64 +367,43 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
 
     for (i = 0; i < 2; i++)
         input_set_abs_params(input_dev, ABS_X + i, -1, 1, 0, 0);
-    for (i = 0; i < mk_max_arcade_buttons - 4; i++)
+    for (i = 0; i < MK_MAX_BUTTONS - 4; i++)
         __set_bit(mk_arcade_gpio_btn[i], input_dev->keybit);
 
-    mk->pad_count[pad_type]++;
+    mk->total_pads++;
 
     // asign gpio pins
     switch (pad_type) {
         case MK_ARCADE_GPIO:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps, 12 *sizeof(int));
+            memcpy(pad->gpio_maps, mk_arcade_gpio_maps, MK_MAX_BUTTONS *sizeof(int));
             break;
         case MK_ARCADE_GPIO_BPLUS:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_bplus, 12 *sizeof(int));
+            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_bplus, MK_MAX_BUTTONS *sizeof(int));
             break;
         case MK_ARCADE_GPIO_TFT:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_tft, 12 *sizeof(int));
+            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_tft, MK_MAX_BUTTONS *sizeof(int));
             break;
         case MK_ARCADE_GPIO_CUSTOM:
-            memcpy(pad->gpio_maps, gpio_cfg.mk_arcade_gpio_maps_custom, 12 *sizeof(int));
+            memcpy(pad->gpio_maps, gpio_cfg.mk_arcade_gpio_maps_custom, MK_MAX_BUTTONS *sizeof(int));
             break;
-        case MK_ARCADE_MCP23017:
-            // nothing to asign if MCP23017 is used
+        case MK_ARCADE_GPIO_CUSTOM2:
+            memcpy(pad->gpio_maps, gpio_cfg2.mk_arcade_gpio_maps_custom, MK_MAX_BUTTONS *sizeof(int));
             break;
     }
 
-    // initialize gpio if not MCP23017, else initialize i2c
-    if(pad_type != MK_ARCADE_MCP23017){
-        for (i = 0; i < mk_max_arcade_buttons; i++) {
-            printk("GPIO = %d\n", pad->gpio_maps[i]);
-            if(pad->gpio_maps[i] != -1){    // to avoid unused buttons
-                 setGpioAsInput(pad->gpio_maps[i]);
-            }                
+    // initialize gpio
+    for (i = 0; i < MK_MAX_BUTTONS; i++) {
+        if(pad->gpio_maps[i] != -1){    // to avoid unused buttons
+            setGpioAsInput(pad->gpio_maps[i]);
         }
+    }                
+    
   #ifdef RPI4
         setGpioPullUps(pad->gpio_maps);
   #else
         setGpioPullUps(getPullUpMask(pad->gpio_maps));
   #endif
         printk("GPIO configured for pad%d\n", idx);
-    }else{
-        i2c_init();
-        udelay(1000);
-        // Put all GPIOA inputs on MCP23017 in INPUT mode
-        i2c_write(pad->mcp23017addr, MPC23017_GPIOA_MODE, &FF, 1);
-        udelay(1000);
-        // Put all inputs on MCP23017 in pullup mode
-        i2c_write(pad->mcp23017addr, MPC23017_GPIOA_PULLUPS_MODE, &FF, 1);
-        udelay(1000);
-        // Put all GPIOB inputs on MCP23017 in INPUT mode
-        i2c_write(pad->mcp23017addr, MPC23017_GPIOB_MODE, &FF, 1);
-        udelay(1000);
-        // Put all inputs on MCP23017 in pullup mode
-        i2c_write(pad->mcp23017addr, MPC23017_GPIOB_PULLUPS_MODE, &FF, 1);
-        udelay(1000);
-        // Put all inputs on MCP23017 in pullup mode a second time
-        // Known bug : if you remove this line, you will not have pullups on GPIOB 
-        i2c_write(pad->mcp23017addr, MPC23017_GPIOB_PULLUPS_MODE, &FF, 1);
-        udelay(1000);
-    }
 
     err = input_register_device(pad->dev);
     if (err)
@@ -606,7 +416,9 @@ err_free_dev:
     pad->dev = NULL;
     return err;
 }
-
+    
+    
+    
 static struct mk __init *mk_probe(int *pads, int n_pads) {
     struct mk *mk;
     int i;
@@ -671,11 +483,6 @@ static int __init mk_init(void) {
         pr_err("io remap failed\n");
         return -EBUSY;
     }
-    /* Set up i2c pointer for direct register access */
-    if ((bsc1 = ioremap(BSC1_BASE, 0xB0)) == NULL) {
-        pr_err("io remap failed\n");
-        return -EBUSY;
-    }
     if (mk_cfg.nargs < 1) {
         pr_err("at least one device must be specified\n");
         return -EINVAL;
@@ -692,7 +499,6 @@ static void __exit mk_exit(void) {
         mk_remove(mk_base);
 
     iounmap(gpio);
-    iounmap(bsc1);
 }
 
 module_init(mk_init);
