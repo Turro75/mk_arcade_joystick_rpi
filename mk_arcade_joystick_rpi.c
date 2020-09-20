@@ -102,9 +102,8 @@ MODULE_PARM_DESC(gpio2, "Numbers of custom GPIO for Arcade Joystick 2");
 
 enum mk_type {
     MK_NONE = 0,
-    MK_ARCADE_GPIO,
-    MK_ARCADE_GPIO_BPLUS,
-    MK_ARCADE_GPIO_TFT,
+    MK_ARCADE_GPIO_P1,
+    MK_ARCADE_GPIO_P2,
     MK_ARCADE_GPIO_CUSTOM,
     MK_ARCADE_GPIO_CUSTOM2,
     MK_MAX
@@ -148,21 +147,21 @@ struct mk_subdev {
 
 static struct mk *mk_base;
 
+//Player1
+
 // Map of the gpios :                     up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
-static const int mk_arcade_gpio_maps[] = {4,  17,    27,  22,    10,    9,      25, 24, 23, 18, 15, 14, 2 };
-
+static const int mk_arcade_gpio_maps_p1[] = {4,  17,    27,  22,    10,    9,      25, 24, 23, 18, 15, 14, 2 };
+                                  
+//Player 2
 // 2nd joystick on the b+ GPIOS                 up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
-static const int mk_arcade_gpio_maps_bplus[] = {11, 5,    6,    13,    19,    26,     21, 20, 16, 12, 7,  8,  3 };
-
-// Map joystick on the b+ GPIOS with TFT      up, down, left, right, start, select, a,  b,  tr, y,  x,  tl, hk
-static const int mk_arcade_gpio_maps_tft[] = {21, 13,    26,    19,    5,    6,     22, 4, 20, 17, 27,  16, 12};
+static const int mk_arcade_gpio_maps_p2[] = {11, 5,    6,    13,    19,    26,     21, 20, 16, 12, 7,  8,  3 };
 
 static const short mk_arcade_gpio_btn[] = {
     BTN_START, BTN_SELECT, BTN_A, BTN_B, BTN_TR, BTN_Y, BTN_X, BTN_TL, BTN_MODE
 };
 
 static const char *mk_names[] = {
-    NULL, "GPIO Controller 1", "GPIO Controller 2", "MCP23017 Controller", "GPIO Controller 1" , "GPIO Controller 1", "GPIO Controller 2"
+    NULL, "GPIO Controller 1", "GPIO Controller 2",  "Custom GPIO Controller 1" , "Custom GPIO Controller 2"
 };
 
 
@@ -374,14 +373,11 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
 
     // asign gpio pins
     switch (pad_type) {
-        case MK_ARCADE_GPIO:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps, MK_MAX_BUTTONS *sizeof(int));
+        case MK_ARCADE_GPIO_P1:
+            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_p1, MK_MAX_BUTTONS *sizeof(int));
             break;
-        case MK_ARCADE_GPIO_BPLUS:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_bplus, MK_MAX_BUTTONS *sizeof(int));
-            break;
-        case MK_ARCADE_GPIO_TFT:
-            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_tft, MK_MAX_BUTTONS *sizeof(int));
+        case MK_ARCADE_GPIO_P2:
+            memcpy(pad->gpio_maps, mk_arcade_gpio_maps_p2, MK_MAX_BUTTONS *sizeof(int));
             break;
         case MK_ARCADE_GPIO_CUSTOM:
             memcpy(pad->gpio_maps, gpio_cfg.mk_arcade_gpio_maps_custom, MK_MAX_BUTTONS *sizeof(int));
