@@ -14,6 +14,8 @@ So i started to wire my joysticks and buttons to my raspberry pi, and I wrote th
 
 However, the Raspberry Pi Board B Rev 2 has a maximum of 21 usable GPIOs, not enough to wire all the 28 switches (2 joystick and 20 buttons) that a standard panel requires.
 
+UPDATE 0.1.6 : removed I2C support, compatibily rpi4, kernel > 4.15 support
+
 UPDATE 0.1.5 : Added GPIO customization
 
 UPDATE 0.1.4 : Compatibily with rpi2 
@@ -151,11 +153,7 @@ If you have two joysticks connected on your RPi B+ version you will have to run 
 
 ```shell
 sudo modprobe mk_arcade_joystick_rpi map=1,2
-```
-If you have a TFT screen connected on your RPi B+ you can't use all the gpios. You can run the following command for using only the gpios not used by the tft screen (Be careful, not all tft screen use the same pins. GPIOs used with this map: 21,13,26,19,5,6,22,4,20,17,27,16,12):
 
-```shell
-sudo modprobe mk_arcade_joystick_rpi map=3
 ```
 
 If you don't want to use all pins or wants a **custom gpio** map use:
