@@ -49,7 +49,7 @@ MODULE_LICENSE("GPL");
 #define MK_MAX_DEVICES		2
 #define MK_MAX_BUTTONS      13
 
-
+/*
 #ifdef RPI2
 #define PERI_BASE        0x3F000000
 #elif RPI4
@@ -57,8 +57,17 @@ MODULE_LICENSE("GPL");
 #else
 #define PERI_BASE        0x20000000
 #endif
+*/
+//define for RPI4
+#define GPPUPPDN0                57        // Pin pull-up/down for pins 15:0  
+#define GPPUPPDN1                58        // Pin pull-up/down for pins 31:16 
+#define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
+#define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
+//define for RPI0-1-2-3 
+#define GPPUDCLK0                38
+#define GPPUD                    37
 
-#define GPIO_BASE                (PERI_BASE + 0x200000) /* GPIO controller */
+#define GPIO_BASE_OFFSET  0x00200000 /* GPIO controller */
 
 #define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
 #define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
@@ -70,6 +79,7 @@ MODULE_LICENSE("GPL");
 #define GPIO_CLR *(gpio+10)
 
 static volatile unsigned *gpio;
+int is_2711;
 
 
 struct mk_config {
@@ -80,7 +90,7 @@ struct mk_config {
 static struct mk_config mk_cfg __initdata;
 
 module_param_array_named(map, mk_cfg.args, int, &(mk_cfg.nargs), 0);
-MODULE_PARM_DESC(map, "Enable or disable GPIO, MCP23017, TFT and Custom Arcade Joystick");
+MODULE_PARM_DESC(map, "Enable or disable GPIO and Custom Arcade Joystick");
 
 struct gpio_config {
     int mk_arcade_gpio_maps_custom[MK_MAX_BUTTONS];
@@ -109,11 +119,9 @@ enum mk_type {
     MK_MAX
 };
 
-#ifdef RPI4 //try reducing polling time to improve latency
-#define MK_REFRESH_TIME	HZ/300
-#else
+
 #define MK_REFRESH_TIME	HZ/100
-#endif
+
 
 struct mk_pad {
     struct input_dev *dev;
@@ -161,19 +169,63 @@ static const short mk_arcade_gpio_btn[] = {
 };
 
 static const char *mk_names[] = {
-    NULL, "GPIO Controller 1", "GPIO Controller 2",  "Custom GPIO Controller 1" , "Custom GPIO Controller 2"
+    NULL, "GPIO Controller 1", "GPIO Controller 2",  "GPIO Controller 1" , "GPIO Controller 2"
 };
 
 
-#ifdef RPI4
-//pullups changed on RPI4
-#define GPPUPPDN0                57        // Pin pull-up/down for pins 15:0  
-#define GPPUPPDN1                58        // Pin pull-up/down for pins 31:16 
-#define GPPUPPDN2                59        // Pin pull-up/down for pins 47:32 
-#define GPPUPPDN3                60        // Pin pull-up/down for pins 57:48 
+uint32_t get_hwbase(void)
+{
+    const char *ranges_file = "/proc/device-tree/soc/ranges";
+    uint8_t ranges[12];
+    FILE *fd;
+    uint32_t ret = 0;
+
+    memset(ranges, 0, sizeof(ranges));
+
+    if ((fd = fopen(ranges_file, "rb")) == NULL)
+    {
+        pr_err("Can't open '%s'\n", ranges_file);
+    }
+    else if (fread(ranges, 1, sizeof(ranges), fd) >= 8)
+    {
+        ret = (ranges[4] << 24) |
+              (ranges[5] << 16) |
+              (ranges[6] << 8) |
+              (ranges[7] << 0);
+        if (!ret)
+            ret = (ranges[8] << 24) |
+                  (ranges[9] << 16) |
+                  (ranges[10] << 8) |
+                  (ranges[11] << 0);
+        if ((ranges[0] != 0x7e) ||
+                (ranges[1] != 0x00) ||
+                (ranges[2] != 0x00) ||
+                (ranges[3] != 0x00) ||
+                ((ret != 0x20000000) && (ret != 0x3f000000) && (ret != 0xfe000000)))
+        {
+            pr_err("Unexpected ranges data (%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x)\n",
+                   ranges[0], ranges[1], ranges[2], ranges[3],
+                   ranges[4], ranges[5], ranges[6], ranges[7],
+                   ranges[8], ranges[9], ranges[10], ranges[11]);
+            ret = 0;
+        }
+    }
+    else
+    {
+        pr_err("Ranges data too short\n");
+    }
+
+    fclose(fd);
+
+    return ret;
+}
+
+
+
 
 static void setGpioPullUp(int gpioPin) {
-      
+    
+    if (is_2711){  //pullups changed on RPI4
     int pullreg = GPPUPPDN0 + (gpioPin>>4);
     int pullshift = (gpioPin & 0xf) << 1;
     unsigned int pullbits;
@@ -181,19 +233,12 @@ static void setGpioPullUp(int gpioPin) {
     pullbits = *(gpio + pullreg);
     pullbits &= ~(3 << pullshift);
     pullbits |= (pull << pullshift);
-    *(gpio + pullreg) = pullbits;  
-}
-
-#else
-//previous RPI
-/* GPIO UTILS */
-#define GPPUDCLK0 38
-#define GPPUD 37
-
-static void setGpioPullUp(int gpioPin) {
-    
-    int clkreg = GPPUDCLK0 + (gpioPin>>5);
-    int clkbit = 1 << (gpioPin & 0x1f);
+    *(gpio + pullreg) = pullbits;
+    }
+    else  //previous RPI
+    {
+       int clkreg = GPPUDCLK0 + (gpioPin>>5);
+      int clkbit = 1 << (gpioPin & 0x1f);
 
     *(gpio + GPPUD) = 0x02;
     udelay(10);
@@ -203,9 +248,8 @@ static void setGpioPullUp(int gpioPin) {
     udelay(10);
     *(gpio + clkreg) = 0;
     udelay(10);
+    } 
 }
-
-#endif
 
 
 static void setGpioAsInput(int gpioNum) {
@@ -462,10 +506,13 @@ static void mk_remove(struct mk *mk) {
 
 static int __init mk_init(void) {
     /* Set up gpio pointer for direct register access */
-    if ((gpio = ioremap(GPIO_BASE, 0xB0)) == NULL) {
+    uint32_t hwbase;
+    hwbase = get_hwbase();
+    if ((gpio = ioremap(GPIO_BASE_OFFSET+hwbase, 0xB0)) == NULL) {
         pr_err("io remap failed\n");
         return -EBUSY;
     }
+    is_2711 = (*(gpio+GPPUPPDN3) != 0x6770696f);
     if (mk_cfg.nargs < 1) {
         pr_err("at least one device must be specified\n");
         return -EINVAL;
