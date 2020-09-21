@@ -26,7 +26,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <stdio.h>
+#include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -178,9 +178,14 @@ uint32_t get_hwbase(void)
 {
     const char *ranges_file = "/proc/device-tree/soc/ranges";
     uint8_t ranges[12];
-    FILE *fd;
+    //FILE *fd;
     uint32_t ret = 0;
 
+    kernel_read_file_from_path(ranges_file, ranges, 12,
+			       12, READING_FIRMWARE);
+    
+    
+    
     memset(ranges, 0, sizeof(ranges));
 
     if ((fd = fopen(ranges_file, "rb")) == NULL)
