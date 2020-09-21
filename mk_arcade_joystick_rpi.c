@@ -50,15 +50,6 @@ MODULE_LICENSE("GPL");
 #define MK_MAX_DEVICES		2
 #define MK_MAX_BUTTONS      13
 
-/*
-#ifdef RPI2
-#define PERI_BASE        0x3F000000
-#elif RPI4
-#define PERI_BASE        0xFE000000
-#else
-#define PERI_BASE        0x20000000
-#endif
-*/
 //define for RPI4
 #define GPPUPPDN0                57        // Pin pull-up/down for pins 15:0  
 #define GPPUPPDN1                58        // Pin pull-up/down for pins 31:16 
@@ -115,7 +106,7 @@ enum mk_type {
     MK_NONE = 0,
     MK_ARCADE_GPIO_P1,
     MK_ARCADE_GPIO_P2,
-    MK_ARCADE_GPIO_CUSTOM,
+    MK_ARCADE_GPIO_CUSTOM1,
     MK_ARCADE_GPIO_CUSTOM2,
     MK_MAX
 };
@@ -335,14 +326,14 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
         return -EINVAL;
     }
 
-    if (pad_type == MK_ARCADE_GPIO_CUSTOM) {
+    if (pad_type == MK_ARCADE_GPIO_CUSTOM1) {
 
         // if the device is custom, be sure to get correct pins
         if (gpio_cfg.nargs < 1) {
             pr_err("Custom device needs gpio argument\n");
             return -EINVAL;
         } else if(gpio_cfg.nargs != MK_MAX_BUTTONS){
-             pr_err("Invalid gpio argument\n", pad_type);
+             pr_err("Invalid gpio argument\n");
              return -EINVAL;
         }
     
@@ -355,7 +346,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
             pr_err("Custom device needs gpio argument\n");
             return -EINVAL;
         } else if(gpio_cfg2.nargs != MK_MAX_BUTTONS){
-             pr_err("Invalid gpio argument\n", pad_type);
+             pr_err("Invalid gpio argument\n");
              return -EINVAL;
         }
     
@@ -401,7 +392,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
         case MK_ARCADE_GPIO_P2:
             memcpy(pad->gpio_maps, mk_arcade_gpio_maps_p2, MK_MAX_BUTTONS *sizeof(int));
             break;
-        case MK_ARCADE_GPIO_CUSTOM:
+        case MK_ARCADE_GPIO_CUSTOM1:
             memcpy(pad->gpio_maps, gpio_cfg.mk_arcade_gpio_maps_custom, MK_MAX_BUTTONS *sizeof(int));
             break;
         case MK_ARCADE_GPIO_CUSTOM2:
