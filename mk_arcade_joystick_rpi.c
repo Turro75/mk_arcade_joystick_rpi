@@ -194,9 +194,15 @@ uint32_t get_hwbase(void)
         case 0xD08: ret = 0xFE000000; break;
         default:    ret = 0xFE000000; break;
     }
+    if (ret>0){
     pr_err("Found Memory base at 0x%08x\n", ret);
-
+    }
+    else
+    {
+    pr_err("Unable to detect Memory base address\n");
+    }
     return ret;
+
 
 }
 
