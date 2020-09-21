@@ -176,54 +176,28 @@ static const char *mk_names[] = {
 
 uint32_t get_hwbase(void)
 {
-    const char *ranges_file = "/proc/device-tree/soc/ranges";
-    uint8_t ranges[12];
-    //FILE *fd;
-    uint32_t ret = 0;
 
-    kernel_read_file_from_path(ranges_file, ranges, 12,
-			       12, READING_FIRMWARE);
-    
-    
-    
-    memset(ranges, 0, sizeof(ranges));
-
-    if ((fd = fopen(ranges_file, "rb")) == NULL)
-    {
-        pr_err("Can't open '%s'\n", ranges_file);
+    uint32_t reg, ret;    
+ 
+    /* read the system register */
+#if __AARCH64__
+    asm volatile ("mrs %0, midr_el1" : "=r" (reg));
+#else
+    asm volatile ("mrc p15,0,%0,c0,c0,0" : "=r" (reg));
+#endif
+ 
+    /* get the PartNum, detect board and MMIO base address */
+    switch ((reg >> 4) & 0xFFF) {
+        case 0xB76: ret = 0x20000000; break;
+        case 0xC07: ret = 0x3F000000; break;
+        case 0xD03: ret = 0x3F000000; break;
+        case 0xD08: ret = 0xFE000000; break;
+        default:    ret = 0xFE000000; break;
     }
-    else if (fread(ranges, 1, sizeof(ranges), fd) >= 8)
-    {
-        ret = (ranges[4] << 24) |
-              (ranges[5] << 16) |
-              (ranges[6] << 8) |
-              (ranges[7] << 0);
-        if (!ret)
-            ret = (ranges[8] << 24) |
-                  (ranges[9] << 16) |
-                  (ranges[10] << 8) |
-                  (ranges[11] << 0);
-        if ((ranges[0] != 0x7e) ||
-                (ranges[1] != 0x00) ||
-                (ranges[2] != 0x00) ||
-                (ranges[3] != 0x00) ||
-                ((ret != 0x20000000) && (ret != 0x3f000000) && (ret != 0xfe000000)))
-        {
-            pr_err("Unexpected ranges data (%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x)\n",
-                   ranges[0], ranges[1], ranges[2], ranges[3],
-                   ranges[4], ranges[5], ranges[6], ranges[7],
-                   ranges[8], ranges[9], ranges[10], ranges[11]);
-            ret = 0;
-        }
-    }
-    else
-    {
-        pr_err("Ranges data too short\n");
-    }
-
-    fclose(fd);
+    pr_err("Found Memory base at 0x%08x\n", ret);
 
     return ret;
+
 }
 
 
