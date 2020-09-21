@@ -180,7 +180,7 @@ uint32_t get_hwbase(void)
     uint32_t reg, ret;    
  
     /* read the system register */
-#if __AARCH64__
+#ifdef __aarch64__
     asm volatile ("mrs %0, midr_el1" : "=r" (reg));
 #else
     asm volatile ("mrc p15,0,%0,c0,c0,0" : "=r" (reg));
@@ -192,7 +192,7 @@ uint32_t get_hwbase(void)
         case 0xC07: ret = 0x3F000000; break;
         case 0xD03: ret = 0x3F000000; break;
         case 0xD08: ret = 0xFE000000; break;
-        default:    ret = 0xFE000000; break;
+        default:    ret = 0x00000000; break;
     }
     if (ret>0){
     pr_err("Found Memory base at 0x%08x\n", ret);
