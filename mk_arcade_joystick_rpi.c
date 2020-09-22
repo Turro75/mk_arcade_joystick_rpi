@@ -167,7 +167,7 @@ static const char *mk_names[] = {
 
 uint32_t get_hwbase(void)
 {
-
+    char *board;
     uint32_t reg, ret;    
  
     /* read the system register */
@@ -179,18 +179,18 @@ uint32_t get_hwbase(void)
  
     /* get the PartNum, detect board and MMIO base address */
     switch ((reg >> 4) & 0xFFF) {
-        case 0xB76: ret = 0x20000000; break;
-        case 0xC07: ret = 0x3F000000; break;
-        case 0xD03: ret = 0x3F000000; break;
-        case 0xD08: ret = 0xFE000000; break;
+        case 0xB76: board = "Rpi0/1"; ret = 0x20000000; break;
+        case 0xC07: board = "Rpi2"  ; ret = 0x3F000000; break;
+        case 0xD03: board = "Rpi3"  ; ret = 0x3F000000; break;
+        case 0xD08: board = "Rpi4"  ; ret = 0xFE000000; break;
         default:    ret = 0x00000000; break;
     }
     if (ret>0){
-    pr_err("Found Memory base at 0x%08x\n", ret);
+    printk(KERN_INFO,"Found %s with memory base at 0x%08x\n", board,ret);
     }
     else
     {
-    pr_err("Unable to detect Memory base address\n");
+    printk(KERN_ERR,"Unable to detect Memory base address\n");
     }
     return ret;
 
@@ -317,7 +317,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     struct input_dev *input_dev;
     int i, pad_type;
     int err;
-    pr_err("pad type : %d\n",pad_type_arg);
+    pr_info("pad type : %d\n",pad_type_arg);
 
     pad_type = pad_type_arg;
 
@@ -352,7 +352,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     
     }
 
-    pr_err("pad type : %d\n",pad_type);
+    pr_info("pad type : %d\n",pad_type);
     pad->dev = input_dev = input_allocate_device();
     if (!input_dev) {
         pr_err("Not enough memory for input device\n");
@@ -407,7 +407,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
             setGpioPullUp(pad->gpio_maps[i]);
         }
     }                
-        printk("GPIO configured for pad%d\n", idx);
+        printk(KERN_INFO,"GPIO configured for pad%d\n", idx);
 
     err = input_register_device(pad->dev);
     if (err)
