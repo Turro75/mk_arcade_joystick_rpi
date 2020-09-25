@@ -317,7 +317,6 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
     struct input_dev *input_dev;
     int i, pad_type;
     int err;
-    pr_info("pad type : %d\n",pad_type_arg);
 
     pad_type = pad_type_arg;
 
