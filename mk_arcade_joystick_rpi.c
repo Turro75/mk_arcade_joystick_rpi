@@ -186,11 +186,11 @@ uint32_t get_hwbase(void)
         default:    ret = 0x00000000; break;
     }
     if (ret>0){
-    printk(KERN_INFO,"Found %s with memory base at 0x%08x\n", board,ret);
+        pr_err("Found %s with memory base at 0x%08x\n", board,ret);
     }
     else
     {
-    printk(KERN_ERR,"Unable to detect Memory base address\n");
+        pr_err("Unable to detect Memory base address\n");
     }
     return ret;
 
@@ -407,7 +407,7 @@ static int __init mk_setup_pad(struct mk *mk, int idx, int pad_type_arg) {
             setGpioPullUp(pad->gpio_maps[i]);
         }
     }                
-        printk(KERN_INFO,"GPIO configured for pad%d\n", idx);
+        pr_err("GPIO configured for pad%d\n", idx);
 
     err = input_register_device(pad->dev);
     if (err)
